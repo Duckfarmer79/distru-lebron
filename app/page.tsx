@@ -1,103 +1,950 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import React, { useMemo, useState } from 'react';
+import useSWR from 'swr';
+import { useTotals, addUnits } from '../lib/cart';
+
+// Default image for products missing images
+const DEFAULT_PRODUCT_IMAGE = '/default-product.jpg';
+
+// Helper function to get product image with fallback
+function getProductImage(imageUrl: string | null): string {
+  return imageUrl || DEFAULT_PRODUCT_IMAGE;
+}
+
+type MenuItem = {
+  product_id: string;
+  name: string;
+  brand: string | null;
+  category: string | null;
+  units: number;
+  case_size: number;
+  cases_available: number;
+  price_per_unit: number;
+  price_per_case: number;
+  image_url: string | null;
+  unit_type: string | null;
+  avg_thc_percentage: number | null;
+};
+
+type CartItem = {
+  product_id: string;
+  name: string;
+  brand: string | null;
+  case_size: number;
+  image_url: string | null;
+  mode: 'unit' | 'case';
+  qtyUnits: number;
+  qtyCases: number;
+  price_per_unit: number;
+  price_per_case: number;
+};
+
+type Customer = {
+  id: string;
+  company_name: string;
+  display_name?: string;
+  category: string;
+  phone_number: string | null;
+  default_email: string | null;
+  invoice_email: string | null;
+  relationship_type: string;
+  primary_address?: {
+    street1: string;
+    street2?: string;
+    city: string;
+    state: string;
+    postal_code: string;
+  };
+  locations: {
+    id: string;
+    name: string;
+    address: string;
+    license_id: string;
+  }[];
+  licenses: {
+    id: string;
+    license_number: string;
+  }[];
+  updated_datetime: string;
+};
+
+type User = {
+  id: string;
+  email: string;
+  full_name: string;
+  role_name: string;
+  role_id?: string;
+  banned: boolean;
+};
+
+const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then(r => {
+  console.log('🌐 Fetch response:', { url, status: r.status, ok: r.ok });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json().then(data => {
+    console.log('📦 Parsed data:', { length: data?.length, sample: data?.[0] });
+    return data;
+  });
+});
+
+function currency(n: number) {
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(n || 0);
+}
+
+function ItemCard({
+  item,
+  onAdd,
+  reservedUnits = 0,
+}: {
+  item: MenuItem;
+  onAdd: (ci: CartItem) => void;
+  reservedUnits?: number;
+}) {
+  const [mode, setMode] = useState<'unit' | 'case'>('unit');
+  const [qtyUnits, setQtyUnits] = useState<number>(0);
+  const [qtyCases, setQtyCases] = useState<number>(0);
+  const [ppu, setPpu] = useState<number>(item.price_per_unit || 0);
+  const [ppc, setPpc] = useState<number>(item.price_per_case || (item.price_per_unit * item.case_size));
+
+  function handlePpuChange(v: string) {
+    const n = parseFloat(v);
+    const val = Number.isFinite(n) ? n : 0;
+    setPpu(val);
+    setPpc(val * (item.case_size || 1));
+  }
+
+  function handlePpcChange(v: string) {
+    const n = parseFloat(v);
+    const val = Number.isFinite(n) ? n : 0;
+    setPpc(val);
+    const cs = item.case_size || 1;
+    setPpu(cs ? val / cs : 0);
+  }
+
+  function addToCart() {
+    onAdd({
+      product_id: item.product_id,
+      name: item.name,
+      brand: item.brand,
+      case_size: item.case_size,
+      image_url: item.image_url,
+      mode,
+      qtyUnits: Math.max(0, Math.floor(qtyUnits)),
+      qtyCases: Math.max(0, Math.floor(qtyCases)),
+      price_per_unit: ppu,
+      price_per_case: ppc,
+    });
+    setQtyUnits(0);
+    setQtyCases(0);
+  }
+
+  const maxUnits = item.units;
+  const maxCases = Math.floor(item.units / (item.case_size || 1));
+  
+  // Calculate display values with optimistic reservations
+  const displayUnits = Math.max(0, maxUnits - reservedUnits);
+  const displayCases = Math.floor(displayUnits / (item.case_size || 1));
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
+    <div className="rounded-2xl shadow p-4 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 flex flex-col">
+            <div className="relative bg-neutral-100 dark:bg-neutral-800 rounded-xl aspect-square overflow-hidden">
+        <img 
+          src={getProductImage(item.image_url)} 
+          alt={item.name} 
+          className="w-full h-full object-cover"
+          onError={(e) => {
+            // If the default image also fails, show a placeholder
+            const target = e.target as HTMLImageElement;
+            if (target.src !== DEFAULT_PRODUCT_IMAGE) {
+              target.src = DEFAULT_PRODUCT_IMAGE;
+            } else {
+              target.style.display = 'none';
+              target.nextElementSibling?.classList.remove('hidden');
+            }
+          }}
         />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+        <div className="hidden w-full h-full flex items-center justify-center text-neutral-400 text-sm bg-neutral-100 dark:bg-neutral-800">
+          No Image
         </div>
+      </div>
+      <div className="text-sm text-neutral-500">{item.brand || '—'}</div>
+      <div className="font-semibold">{item.name}</div>
+      <div className="mt-2 grid grid-cols-4 gap-2 text-xs">
+        <div className="rounded-lg bg-neutral-50 dark:bg-neutral-800 p-2">
+          <div className="text-neutral-500">Units</div>
+          <div className={`font-semibold ${reservedUnits > 0 ? 'text-orange-600 dark:text-orange-400' : ''}`}>
+            {displayUnits}
+            {reservedUnits > 0 && (
+              <span className="text-xs text-neutral-400 ml-1">({maxUnits})</span>
+            )}
+          </div>
+        </div>
+        <div className="rounded-lg bg-neutral-50 dark:bg-neutral-800 p-2">
+          <div className="text-neutral-500">Case Size</div>
+          <div className="font-semibold">{item.case_size}</div>
+        </div>
+        <div className="rounded-lg bg-neutral-50 dark:bg-neutral-800 p-2">
+          <div className="text-neutral-500">Cases Avail</div>
+          <div className={`font-semibold ${reservedUnits > 0 ? 'text-orange-600 dark:text-orange-400' : ''}`}>
+            {displayCases}
+            {reservedUnits > 0 && (
+              <span className="text-xs text-neutral-400 ml-1">({maxCases})</span>
+            )}
+          </div>
+        </div>
+        <div className="rounded-lg bg-neutral-50 dark:bg-neutral-800 p-2">
+          <div className="text-neutral-500">Avg THC</div>
+          <div className="font-semibold text-green-600 dark:text-green-400">
+            {item.avg_thc_percentage ? `${item.avg_thc_percentage.toFixed(1)}%` : '—'}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <div>
+          <div className="text-xs text-neutral-500">Unit Price</div>
+          <input
+            type="number"
+            step="0.01"
+            className="w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-2"
+            value={ppu}
+            onChange={(e) => handlePpuChange(e.target.value)}
+          />
+        </div>
+        <div>
+          <div className="text-xs text-neutral-500">Case Price</div>
+          <input
+            type="number"
+            step="0.01"
+            className="w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-2"
+            value={ppc}
+            onChange={(e) => handlePpcChange(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-center gap-2">
+        <button
+          onClick={() => setMode('unit')}
+          className={`flex-1 rounded-lg p-2 text-sm ${mode === 'unit' ? 'bg-black text-white dark:bg-white dark:text-black' : 'bg-neutral-100 dark:bg-neutral-800'}`}
+        >
+          By Unit
+        </button>
+        <button
+          onClick={() => setMode('case')}
+          className={`flex-1 rounded-lg p-2 text-sm ${mode === 'case' ? 'bg-black text-white dark:bg-white dark:text-black' : 'bg-neutral-100 dark:bg-neutral-800'}`}
+        >
+          By Case
+        </button>
+      </div>
+
+      {mode === 'unit' ? (
+        <div className="mt-3">
+          <div className="text-xs text-neutral-500 mb-1">Units Qty</div>
+          <input
+            type="number"
+            min={0}
+            max={maxUnits} // Keep original max to allow overselling
+            className="w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-2"
+            value={qtyUnits}
+            onChange={(e) => setQtyUnits(parseInt(e.target.value || '0', 10))}
+          />
+          <div className="mt-1 text-xs text-neutral-500">
+            Available: {displayUnits}
+            {reservedUnits > 0 && <span className="text-orange-600 dark:text-orange-400"> ({reservedUnits} reserved)</span>}
+          </div>
+        </div>
+      ) : (
+        <div className="mt-3">
+          <div className="text-xs text-neutral-500 mb-1">Cases Qty</div>
+          <input
+            type="number"
+            min={0}
+            max={maxCases} // Keep original max to allow overselling
+            className="w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-2"
+            value={qtyCases}
+            onChange={(e) => setQtyCases(parseInt(e.target.value || '0', 10))}
+          />
+          <div className="mt-1 text-xs text-neutral-500">
+            Available: {displayCases}
+            {reservedUnits > 0 && <span className="text-orange-600 dark:text-orange-400"> ({Math.floor(reservedUnits / (item.case_size || 1))} cases reserved)</span>}
+          </div>
+        </div>
+      )}
+
+      <button
+        onClick={addToCart}
+        className="mt-4 rounded-xl bg-black text-white dark:bg-white dark:text-black p-3 font-medium"
+      >
+        Add
+      </button>
+    </div>
+  );
+}
+
+export default function Page() {
+  const { data, error, isLoading } = useSWR<MenuItem[]>('/api/menu', fetcher, {
+    refreshInterval: 30000,
+    dedupingInterval: 5000,
+    revalidateOnFocus: true,
+  });
+
+  const { data: customers, error: customersError, isLoading: customersLoading } = useSWR<Customer[]>('/api/distru/companies', fetcher, {
+    revalidateOnMount: true,
+    revalidateOnFocus: false,
+  });
+
+  // Fetch users from users API
+  const { data: users, error: usersError, isLoading: usersLoading } = useSWR<User[]>('/api/distru/users', fetcher, {
+    refreshInterval: 600000, // 10 minutes for users (they don't change often)
+    revalidateOnFocus: false,
+  });
+
+  // Debug customers data
+  console.log('🎯 Frontend customers data:', {
+    customersCount: customers?.length,
+    isLoading: customersLoading,
+    error: customersError?.message,
+    first3Customers: customers?.slice(0, 3)?.map(c => ({ id: c.id, company_name: c.company_name, display_name: c.display_name }))
+  });
+
+  // Add useEffect to monitor when customers data changes
+  React.useEffect(() => {
+    if (customers) {
+      console.log('✅ Customers loaded!', customers.length, 'customers');
+      console.log('Sample customer:', customers[0]);
+    }
+    if (customersError) {
+      console.error('❌ Customers error:', customersError);
+    }
+  }, [customers, customersError]);
+
+  // Debug users data
+  console.log('👥 Frontend users data:', {
+    usersCount: users?.length,
+    isLoading: usersLoading,
+    error: usersError?.message,
+    first3Users: users?.slice(0, 3)?.map(u => ({ id: u.id, full_name: u.full_name, role_name: u.role_name }))
+  });
+
+  console.log('🎯 Frontend received:', { 
+    dataLength: data?.length, 
+    isLoading, 
+    error: error?.message,
+    errorDetails: error,
+    first5Items: data?.slice(0, 5)?.map(item => ({ id: item.product_id, name: item.name }))
+  });
+
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [selectedBrand, setSelectedBrand] = useState<string>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<'quantity' | 'name' | 'thc'>('quantity');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState<boolean>(false);
+  const [orderMessage, setOrderMessage] = useState<string>('');
+  const [customerNotes, setCustomerNotes] = useState<string>('');
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [selectedOwner, setSelectedOwner] = useState<User | null>(null);
+  const [selectedSalesRep, setSelectedSalesRep] = useState<User | null>(null);
+
+  // Add a simple test to see what we have
+  const testDisplay = data ? `Got ${data.length} items` : isLoading ? 'Loading...' : error ? `Error: ${error.message}` : 'No data';
+  const totalsStore = useTotals();
+
+  // Get unique brands and categories for filter dropdowns
+  const uniqueBrands = useMemo(() => {
+    if (!Array.isArray(data)) return [];
+    const brands = data
+      .map(item => item.brand)
+      .filter((brand): brand is string => Boolean(brand && brand.trim()))
+      .filter((brand, index, arr) => arr.indexOf(brand) === index)
+      .sort();
+    return brands;
+  }, [data]);
+
+  const uniqueCategories = useMemo(() => {
+    if (!Array.isArray(data)) return [];
+    const categories = data
+      .map(item => item.category)
+      .filter((category): category is string => Boolean(category && category.trim()))
+      .filter((category, index, arr) => arr.indexOf(category) === index)
+      .sort();
+    return categories;
+  }, [data]);
+
+  function addToCart(ci: CartItem) {
+    const cs = Math.max(1, ci.case_size);
+    setCart(prev => {
+      const idx = prev.findIndex(
+        p =>
+          p.product_id === ci.product_id &&
+          p.price_per_unit === ci.price_per_unit &&
+          p.price_per_case === ci.price_per_case &&
+          p.mode === ci.mode
+      );
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = {
+          ...next[idx],
+          qtyUnits: next[idx].qtyUnits + ci.qtyUnits,
+          qtyCases: next[idx].qtyCases + ci.qtyCases,
+        };
+        return next;
+      }
+      return [...prev, ci];
+    });
+    const unitsToAdd = ci.qtyUnits + ci.qtyCases * cs;
+    const unitPriceUsed = ci.mode === 'case' ? ci.price_per_case / cs : ci.price_per_unit;
+    if (unitsToAdd > 0) addUnits(unitsToAdd, unitPriceUsed, cs);
+  }
+
+  function removeFromCart(pid: string) {
+    setCart(prev => prev.filter(p => p.product_id !== pid));
+  }
+
+  async function submitOrder() {
+    if (cart.length === 0) {
+      setOrderMessage('Cart is empty. Please add items before submitting order.');
+      return;
+    }
+
+    if (!selectedCustomer) {
+      setOrderMessage('Please select a customer before submitting the order.');
+      return;
+    }
+
+    setIsSubmittingOrder(true);
+    setOrderMessage('');
+
+    try {
+      const response = await fetch('/api/distru/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cart: cart,
+          customerInfo: {
+            notes: customerNotes.trim() || null,
+          },
+          selectedCustomer: selectedCustomer,
+          selectedOwner: selectedOwner,
+          selectedSalesRep: selectedSalesRep,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setOrderMessage(result.message || 'Order submitted successfully!');
+        setCart([]); // Clear cart on successful submission
+        setCustomerNotes(''); // Clear notes
+        setSelectedCustomer(null); // Clear customer selection
+        setSelectedOwner(null); // Clear owner selection
+        setSelectedSalesRep(null); // Clear sales rep selection
+        // Refresh the menu data to update inventory
+        window.location.reload();
+      } else {
+        setOrderMessage(`Order submission failed: ${result.error || 'Unknown error'}`);
+      }
+    } catch (err: any) {
+      setOrderMessage(`Order submission failed: ${err.message || 'Network error'}`);
+    } finally {
+      setIsSubmittingOrder(false);
+    }
+  }
+
+  const totals = useMemo(() => {
+    let units = 0;
+    let cases = 0;
+    let subtotal = 0;
+    for (const c of cart) {
+      units += c.qtyUnits + c.qtyCases * c.case_size;
+      cases += c.qtyCases;
+      subtotal += c.qtyUnits * c.price_per_unit + c.qtyCases * c.price_per_case;
+    }
+    return { units, cases, subtotal };
+  }, [cart]);
+
+  const visibleItems = useMemo(() => {
+    if (!Array.isArray(data)) return [];
+    
+    // First, filter the items
+    const filtered = data.filter(item => {
+      // Keep existing inventory filter
+      if ((item.units || 0) <= 0) return false;
+      
+      // Search filter
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        const nameMatch = (item.name || '').toLowerCase().includes(query);
+        const brandMatch = (item.brand || '').toLowerCase().includes(query);
+        const categoryMatch = (item.category || '').toLowerCase().includes(query);
+        
+        if (!nameMatch && !brandMatch && !categoryMatch) return false;
+      }
+      
+      // Brand filter
+      if (selectedBrand !== 'all' && item.brand !== selectedBrand) return false;
+      
+      // Category filter
+      if (selectedCategory !== 'all' && item.category !== selectedCategory) return false;
+      
+      return true;
+    });
+
+    // Then, sort the filtered items
+    return filtered.sort((a, b) => {
+      let comparison = 0;
+      
+      switch (sortBy) {
+        case 'quantity':
+          comparison = (a.units || 0) - (b.units || 0);
+          break;
+        case 'name':
+          comparison = (a.name || '').localeCompare(b.name || '');
+          break;
+        case 'thc':
+          const aThc = a.avg_thc_percentage || 0;
+          const bThc = b.avg_thc_percentage || 0;
+          comparison = aThc - bThc;
+          break;
+        default:
+          comparison = 0;
+      }
+      
+      // Apply sort order (desc = reverse)
+      return sortOrder === 'desc' ? -comparison : comparison;
+    });
+  }, [data, selectedBrand, selectedCategory, sortBy, sortOrder, searchQuery]);
+
+  // Calculate reserved units per product from cart
+  const getReservedUnits = useMemo(() => {
+    const reservedByProduct = new Map<string, number>();
+    for (const cartItem of cart) {
+      const currentReserved = reservedByProduct.get(cartItem.product_id) || 0;
+      const totalReservedUnits = cartItem.qtyUnits + (cartItem.qtyCases * cartItem.case_size);
+      reservedByProduct.set(cartItem.product_id, currentReserved + totalReservedUnits);
+    }
+    return (productId: string) => reservedByProduct.get(productId) || 0;
+  }, [cart]);
+
+  if (error) {
+    return <div className="p-6 text-red-600">Failed to load menu</div>;
+  }
+
+  return (
+    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950">
+      <div className="fixed top-2 right-2 z-40 text-xs bg-neutral-900 text-white rounded-full px-3 py-1 shadow">
+        {totalsStore.units} • {totalsStore.cases} • {currency(totalsStore.subtotal)}
+      </div>
+
+      <header className="sticky top-0 z-10 bg-white/80 dark:bg-neutral-900/80 backdrop-blur border-b border-neutral-200 dark:border-neutral-800">
+        <div className="max-w-7xl mx-auto p-4 flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <div className="text-lg font-semibold">Distru Menu - {testDisplay}</div>
+            
+            {/* Filter and Sort Controls */}
+            <div className="flex items-center gap-3">
+              {/* Search Input */}
+              <input
+                type="text"
+                placeholder="Search products, brands, categories..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-1 text-sm w-64 placeholder:text-neutral-400"
+              />
+
+              <select
+                value={selectedBrand}
+                onChange={(e) => setSelectedBrand(e.target.value)}
+                className="rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-1 text-sm"
+              >
+                <option value="all">All Brands</option>
+                {uniqueBrands.map(brand => (
+                  <option key={brand} value={brand}>{brand}</option>
+                ))}
+              </select>
+              
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-1 text-sm"
+              >
+                <option value="all">All Categories</option>
+                {uniqueCategories.map(category => (
+                  <option key={category} value={category}>{category}</option>
+                ))}
+              </select>
+
+              {/* Sort Controls */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-neutral-500">Sort:</span>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as 'quantity' | 'name' | 'thc')}
+                  className="rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-1 text-sm"
+                >
+                  <option value="quantity">Quantity</option>
+                  <option value="name">Name</option>
+                  <option value="thc">THC %</option>
+                </select>
+                
+                <button
+                  onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                  className="rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-sm hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                  title={`Sort ${sortOrder === 'asc' ? 'Ascending' : 'Descending'}`}
+                >
+                  {sortOrder === 'asc' ? '↑' : '↓'}
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-6">
+            <div className="text-sm">
+              <div className="text-neutral-500">Total Units</div>
+              <div className="font-semibold">{totals.units}</div>
+            </div>
+            <div className="text-sm">
+              <div className="text-neutral-500">Total Cases</div>
+              <div className="font-semibold">{totals.cases}</div>
+            </div>
+            <div className="text-sm">
+              <div className="text-neutral-500">Subtotal</div>
+              <div className="font-semibold">{currency(totals.subtotal)}</div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {isLoading && <div className="col-span-full text-neutral-500">Loading…</div>}
+        {visibleItems.length === 0 && !isLoading && (
+          <div className="col-span-full text-neutral-500">No active items</div>
+        )}
+        {visibleItems.map(item => (
+          <ItemCard 
+            key={item.product_id} 
+            item={item} 
+            onAdd={addToCart} 
+            reservedUnits={getReservedUnits(item.product_id)}
+          />
+        ))}
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+
+      <aside className="max-w-7xl mx-auto p-4">
+        <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
+          <div className="font-semibold mb-3">Cart</div>
+          {cart.length === 0 ? (
+            <div className="text-neutral-500 text-sm">Empty</div>
+          ) : (
+            <div className="space-y-3">
+              {cart.map(c => (
+                <div key={c.product_id} className="flex items-center gap-3 border-b border-neutral-200 dark:border-neutral-800 pb-3">
+                  <div className="w-14 h-14 rounded-lg overflow-hidden bg-neutral-100 dark:bg-neutral-800 flex-shrink-0">
+                    <img 
+                      src={getProductImage(c.image_url)} 
+                      alt={c.name} 
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        if (target.src !== DEFAULT_PRODUCT_IMAGE) {
+                          target.src = DEFAULT_PRODUCT_IMAGE;
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-sm font-medium">{c.name}</div>
+                    <div className="text-xs text-neutral-500">{c.brand || '—'}</div>
+                    <div className="text-xs mt-1">
+                      {c.qtyUnits > 0 ? `${c.qtyUnits} units @ ${currency(c.price_per_unit)} ` : null}
+                      {c.qtyUnits > 0 && c.qtyCases > 0 ? '• ' : null}
+                      {c.qtyCases > 0 ? `${c.qtyCases} cases @ ${currency(c.price_per_case)}` : null}
+                    </div>
+                  </div>
+                  <div className="text-sm font-semibold">
+                    {currency(c.qtyUnits * c.price_per_unit + c.qtyCases * c.price_per_case)}
+                  </div>
+                  <button
+                    onClick={() => removeFromCart(c.product_id)}
+                    className="text-xs px-2 py-1 rounded-md border border-neutral-300 dark:border-neutral-700"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              
+              {/* Customer Selection - Simplified Debug Version */}
+              <div className="mt-4">
+                <label htmlFor="customer-select" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                  Select Customer * {customersLoading ? '(Loading...)' : `(${customers?.length || 0} available)`}
+                </label>
+                
+                {customersError && (
+                  <div className="text-red-600 dark:text-red-400 text-sm mb-2 p-2 bg-red-50 dark:bg-red-900/20 rounded">
+                    Error loading customers: {customersError.message}
+                  </div>
+                )}
+                
+                <select
+                  id="customer-select"
+                  value={selectedCustomer?.id || ''}
+                  onChange={(e) => {
+                    const customerId = e.target.value;
+                    const customer = customers?.find((c: Customer) => c.id === customerId) || null;
+                    setSelectedCustomer(customer);
+                  }}
+                  className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-700 rounded-lg 
+                           bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100
+                           focus:ring-2 focus:ring-blue-500 focus:border-blue-500
+                           disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={customersLoading}
+                >
+                  <option value="" style={{color: 'black', backgroundColor: 'white'}}>
+                    {customersLoading ? 'Loading customers...' : 'Select a customer'}
+                  </option>
+                  {customers?.map((customer: Customer) => (
+                    <option 
+                      key={customer.id} 
+                      value={customer.id}
+                      style={{color: 'black', backgroundColor: 'white'}}
+                    >
+                      {customer.company_name || customer.id} 
+                      {customer.display_name && customer.display_name !== customer.company_name 
+                        ? ` (${customer.display_name})` 
+                        : ''
+                      }
+                    </option>
+                  ))}
+                </select>
+                
+                {!customersLoading && (!customers || customers.length === 0) && (
+                  <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300 text-sm rounded">
+                    No customers found. Check API configuration.
+                  </div>
+                )}
+
+                {selectedCustomer && (
+                  <div className="mt-2 p-3 bg-neutral-50 dark:bg-neutral-800 rounded-lg text-sm">
+                    <div className="font-medium text-neutral-900 dark:text-neutral-100">
+                      {selectedCustomer.company_name}
+                    </div>
+                    {selectedCustomer.display_name && selectedCustomer.display_name !== selectedCustomer.company_name && (
+                      <div className="text-neutral-600 dark:text-neutral-400">
+                        Display Name: {selectedCustomer.display_name}
+                      </div>
+                    )}
+                    {selectedCustomer.primary_address && (
+                      <div className="text-neutral-600 dark:text-neutral-400 mt-1">
+                        {selectedCustomer.primary_address.street1}
+                        {selectedCustomer.primary_address.street2 && `, ${selectedCustomer.primary_address.street2}`}
+                        <br />
+                        {selectedCustomer.primary_address.city}, {selectedCustomer.primary_address.state} {selectedCustomer.primary_address.postal_code}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              {/* Owner Selection */}
+              <div className="mt-4">
+                <label htmlFor="owner-select" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                  Owner {usersLoading ? '(Loading...)' : users ? `(${users.length} available)` : ''}
+                </label>
+                {usersError ? (
+                  <div className="text-red-600 dark:text-red-400 text-sm mb-2 p-2 bg-red-50 dark:bg-red-900/20 rounded">
+                    Error loading users: {usersError.message}
+                  </div>
+                ) : users && users.length === 0 ? (
+                  <div className="text-yellow-600 dark:text-yellow-400 text-sm mb-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded">
+                    No users found
+                  </div>
+                ) : (
+                  <select
+                    id="owner-select"
+                    value={selectedOwner?.id || ''}
+                    onChange={(e) => {
+                      const userId = e.target.value;
+                      const user = users?.find((u: User) => u.id === userId) || null;
+                      setSelectedOwner(user);
+                    }}
+                    className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-700 rounded-lg 
+                             bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100
+                             focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    disabled={usersLoading}
+                  >
+                    <option value="" style={{color: 'black', backgroundColor: 'white'}}>
+                      {usersLoading ? 'Loading users...' : 'Select an owner (optional)'}
+                    </option>
+                    {users?.map((user: User) => (
+                      <option 
+                        key={user.id} 
+                        value={user.id}
+                        style={{color: 'black', backgroundColor: 'white'}}
+                      >
+                        {user.full_name} - {user.role_name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {selectedOwner && (
+                  <div className="mt-2 p-3 bg-neutral-50 dark:bg-neutral-800 rounded-lg text-sm">
+                    <div className="font-medium text-neutral-900 dark:text-neutral-100">
+                      {selectedOwner.full_name}
+                    </div>
+                    <div className="text-neutral-600 dark:text-neutral-400">
+                      Role: {selectedOwner.role_name} • Email: {selectedOwner.email}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Sales Rep Selection */}
+              <div className="mt-4">
+                <label htmlFor="salesrep-select" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                  Sales Representative {usersLoading ? '(Loading...)' : users ? `(${users.length} available)` : ''}
+                </label>
+                {usersError ? (
+                  <div className="text-red-600 dark:text-red-400 text-sm mb-2 p-2 bg-red-50 dark:bg-red-900/20 rounded">
+                    Error loading users: {usersError.message}
+                  </div>
+                ) : users && users.length === 0 ? (
+                  <div className="text-yellow-600 dark:text-yellow-400 text-sm mb-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded">
+                    No users found
+                  </div>
+                ) : (
+                  <select
+                    id="salesrep-select"
+                    value={selectedSalesRep?.id || ''}
+                    onChange={(e) => {
+                      const userId = e.target.value;
+                      const user = users?.find((u: User) => u.id === userId) || null;
+                      setSelectedSalesRep(user);
+                    }}
+                    className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-700 rounded-lg 
+                             bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100
+                             focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    disabled={usersLoading}
+                  >
+                    <option value="" style={{color: 'black', backgroundColor: 'white'}}>
+                      {usersLoading ? 'Loading users...' : 'Select a sales rep (optional)'}
+                    </option>
+                    {users?.map((user: User) => (
+                      <option 
+                        key={user.id} 
+                        value={user.id}
+                        style={{color: 'black', backgroundColor: 'white'}}
+                      >
+                        {user.full_name} - {user.role_name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {selectedSalesRep && (
+                  <div className="mt-2 p-3 bg-neutral-50 dark:bg-neutral-800 rounded-lg text-sm">
+                    <div className="font-medium text-neutral-900 dark:text-neutral-100">
+                      {selectedSalesRep.full_name}
+                    </div>
+                    <div className="text-neutral-600 dark:text-neutral-400">
+                      Role: {selectedSalesRep.role_name} • Email: {selectedSalesRep.email}
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Customer Notes */}
+              <div className="mt-4">
+                <label className="text-sm text-neutral-500 mb-1 block">Order Notes (Optional)</label>
+                <textarea
+                  value={customerNotes}
+                  onChange={(e) => setCustomerNotes(e.target.value)}
+                  placeholder="Any special instructions or notes for this order..."
+                  className="w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-2 text-sm resize-none"
+                  rows={2}
+                  disabled={isSubmittingOrder}
+                />
+              </div>
+
+              {/* Order Summary */}
+              <div className="mt-4 pt-3 border-t border-neutral-200 dark:border-neutral-800">
+                <div className="flex justify-between text-sm">
+                  <span>Total Items:</span>
+                  <span>{totals.units} units</span>
+                </div>
+                <div className="flex justify-between text-lg font-bold">
+                  <span>Total:</span>
+                  <span>{currency(totals.subtotal)}</span>
+                </div>
+              </div>
+
+              {/* Submit Order Button */}
+              <button
+                onClick={submitOrder}
+                disabled={isSubmittingOrder || cart.length === 0}
+                className={`w-full mt-4 rounded-xl p-3 font-medium ${
+                  isSubmittingOrder || cart.length === 0
+                    ? 'bg-neutral-300 dark:bg-neutral-700 text-neutral-500 cursor-not-allowed'
+                    : 'bg-green-600 hover:bg-green-700 text-white'
+                }`}
+              >
+                {isSubmittingOrder ? 'Submitting Order...' : 'Submit Order'}
+              </button>
+
+              {/* Order Message */}
+              {orderMessage && (
+                <div className={`mt-3 p-3 rounded-lg text-sm ${
+                  orderMessage.includes('failed') || orderMessage.includes('error')
+                    ? 'bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-200'
+                    : 'bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-200'
+                }`}>
+                  {orderMessage}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </aside>
+
+      {/* Floating Go to Cart Button */}
+      <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 md:hidden">
+        <button
+          onClick={() => {
+            // Scroll to cart section on mobile
+            const cartElement = document.querySelector('aside');
+            cartElement?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }}
+          className={`px-6 py-3 rounded-full font-medium text-white shadow-lg transition-all duration-200 ${
+            cart.length > 0
+              ? 'bg-blue-600 hover:bg-blue-700 transform hover:scale-105'
+              : 'bg-neutral-400 cursor-not-allowed'
+          }`}
+          disabled={cart.length === 0}
         >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+          Go to Cart ({cart.length})
+        </button>
+      </div>
+
+      {/* Desktop Go to Cart Button - Bottom Right */}
+      <div className="hidden md:block fixed bottom-6 right-6 z-50">
+        <button
+          onClick={() => {
+            // Scroll to cart section
+            const cartElement = document.querySelector('aside');
+            cartElement?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }}
+          className={`px-4 py-2 rounded-lg font-medium text-white shadow-lg transition-all duration-200 ${
+            cart.length > 0
+              ? 'bg-blue-600 hover:bg-blue-700 transform hover:scale-105'
+              : 'bg-neutral-400 cursor-not-allowed'
+          }`}
+          disabled={cart.length === 0}
         >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          Cart ({cart.length})
+        </button>
+      </div>
     </div>
   );
 }
