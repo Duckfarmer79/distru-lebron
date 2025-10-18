@@ -33,28 +33,50 @@ export async function GET(req: NextRequest) {
   try {
     const origin = new URL(req.url).origin;
 
-    // Fetch all data in parallel
-    const [pkgRes, prodRes, ordersRes] = await Promise.all([
-      fetch(`${origin}/api/distru/packages`, { cache: 'no-store' }),
-      fetch(`${origin}/api/distru/products`, { cache: 'no-store' }),
-      fetch(`${origin}/api/distru/orders`, { cache: 'no-store' }),
-    ]);
+    // Fetch essential data with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000); // 25 second timeout
+    
+    let pkgs: Pkg[];
+    let prods: Prod[];
+    const commitments: OrderCommitment[] = []; // Skip order commitments for now to prevent timeout
+    
+    try {
+      // Fetch packages and products only (skip orders for now to reduce timeout)
+      const [pkgRes, prodRes] = await Promise.all([
+        fetch(`${origin}/api/distru/packages`, { 
+          cache: 'no-store', 
+          signal: controller.signal,
+          headers: { 'Accept': 'application/json' }
+        }),
+        fetch(`${origin}/api/distru/products`, { 
+          cache: 'no-store', 
+          signal: controller.signal,
+          headers: { 'Accept': 'application/json' }
+        }),
+      ]);
 
-    if (!pkgRes.ok) {
-      const t = await pkgRes.text();
-      return NextResponse.json({ error: 'packages fetch failed', details: t }, { status: pkgRes.status });
-    }
-    if (!prodRes.ok) {
-      const t = await prodRes.text();
-      return NextResponse.json({ error: 'products fetch failed', details: t }, { status: prodRes.status });
-    }
-    if (!ordersRes.ok) {
-      console.warn(`📋 Orders fetch failed: ${ordersRes.status}, continuing without order commitments`);
-    }
+      clearTimeout(timeoutId);
 
-    const pkgs: Pkg[] = await pkgRes.json();
-    const prods: Prod[] = await prodRes.json();
-    const commitments: OrderCommitment[] = ordersRes.ok ? await ordersRes.json() : [];
+      if (!pkgRes.ok) {
+        const t = await pkgRes.text();
+        return NextResponse.json({ error: 'packages fetch failed', details: t }, { status: pkgRes.status });
+      }
+      if (!prodRes.ok) {
+        const t = await prodRes.text();
+        return NextResponse.json({ error: 'products fetch failed', details: t }, { status: prodRes.status });
+      }
+
+      pkgs = await pkgRes.json();
+      prods = await prodRes.json();
+      
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (controller.signal.aborted) {
+        return NextResponse.json({ error: 'Request timeout - Distru API took too long' }, { status: 504 });
+      }
+      throw error;
+    }
     
     console.log(`🔍 Fetched ${pkgs.length} packages, ${prods.length} products, ${commitments.length} order commitments`);
 

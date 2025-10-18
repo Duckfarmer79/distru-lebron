@@ -1,20 +1,12 @@
 {
-  "name": "distru-lebron",
   "version": 2,
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
   "framework": "nextjs",
   "installCommand": "npm install",
-  "env": {
-    "DISTRU_BASE_URL": "https://api.distru.com",
-    "DISTRU_API_KEY": "@distru-api-key",
-    "DISTRU_LOCATION_ID": "@distru-location-id"
-  },
-  "build": {
-    "env": {
-      "DISTRU_BASE_URL": "https://api.distru.com",
-      "DISTRU_API_KEY": "@distru-api-key", 
-      "DISTRU_LOCATION_ID": "@distru-location-id"
+  "functions": {
+    "app/api/**/*.ts": {
+      "maxDuration": 30
     }
   }
 }

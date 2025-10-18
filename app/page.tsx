@@ -3,9 +3,13 @@
 import React, { useMemo, useState } from 'react';
 import useSWR from 'swr';
 import { useTotals, addUnits } from '../lib/cart';
+import SmsInfo from '../components/SmsInfo';
 
 // Default image for products missing images
-const DEFAULT_PRODUCT_IMAGE = '/default-product.jpg';
+const DEFAULT_PRODUCT_IMAGE = '/default-product.JPG';
+
+// Fallback placeholder SVG for when image fails to load
+const PLACEHOLDER_IMAGE = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"%3E%3Crect width="200" height="200" fill="%23f5f5f5"/%3E%3Ctext x="50%25" y="50%25" font-family="Arial, sans-serif" font-size="14" fill="%23999" text-anchor="middle" dy="0.3em"%3ENo Image%3C/text%3E%3C/svg%3E';
 
 // Helper function to get product image with fallback
 function getProductImage(imageUrl: string | null): string {
@@ -153,13 +157,12 @@ function ItemCard({
           alt={item.name} 
           className="w-full h-full object-cover"
           onError={(e) => {
-            // If the default image also fails, show a placeholder
+            // If the default image fails, use placeholder
             const target = e.target as HTMLImageElement;
-            if (target.src !== DEFAULT_PRODUCT_IMAGE) {
-              target.src = DEFAULT_PRODUCT_IMAGE;
+            if (target.src.includes('default-product.JPG')) {
+              target.src = PLACEHOLDER_IMAGE;
             } else {
-              target.style.display = 'none';
-              target.nextElementSibling?.classList.remove('hidden');
+              target.src = DEFAULT_PRODUCT_IMAGE;
             }
           }}
         />
@@ -347,6 +350,11 @@ export default function Page() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [selectedOwner, setSelectedOwner] = useState<User | null>(null);
   const [selectedSalesRep, setSelectedSalesRep] = useState<User | null>(null);
+  
+  // Bulk Fill State
+  const [bulkFillQuantity, setBulkFillQuantity] = useState<number>(1);
+  const [bulkFillBrand, setBulkFillBrand] = useState<string>('');
+  const [bulkFillCategory, setBulkFillCategory] = useState<string>('');
 
   // Add a simple test to see what we have
   const testDisplay = data ? `Got ${data.length} items` : isLoading ? 'Loading...' : error ? `Error: ${error.message}` : 'No data';
@@ -453,6 +461,81 @@ export default function Page() {
     } finally {
       setIsSubmittingOrder(false);
     }
+  }
+
+  // Bulk Fill Function
+  function handleBulkFill() {
+    if (!bulkFillBrand || !bulkFillCategory || bulkFillQuantity < 1) {
+      alert('Please select a quantity, brand, and category for bulk fill.');
+      return;
+    }
+
+    // Find all products matching the brand and category
+    const matchingProducts = data?.filter((item: MenuItem) => 
+      item.brand === bulkFillBrand && 
+      item.category === bulkFillCategory &&
+      item.units > 0 // Only include products with available stock
+    ) || [];
+
+    if (matchingProducts.length === 0) {
+      alert(`No products found for brand "${bulkFillBrand}" in category "${bulkFillCategory}" with available stock.`);
+      return;
+    }
+
+    // Add each matching product to cart with the specified quantity
+    let addedCount = 0;
+    matchingProducts.forEach((item: MenuItem) => {
+      // Check if we can add the requested quantity (don't exceed available stock)
+      const availableUnits = item.units;
+      const quantityToAdd = Math.min(bulkFillQuantity, availableUnits);
+
+      if (quantityToAdd > 0) {
+        // Create a cart item similar to how the individual product cards do it
+        const cartItem: CartItem = {
+          product_id: item.product_id,
+          name: item.name,
+          brand: item.brand,
+          case_size: item.case_size,
+          price_per_unit: item.price_per_unit,
+          price_per_case: item.price_per_case,
+          image_url: item.image_url,
+          
+          // Set the bulk quantity
+          qtyUnits: quantityToAdd,
+          qtyCases: 0,
+          mode: 'unit' as 'unit' | 'case'
+        };
+
+        // Check if this product is already in cart
+        const existingIndex = cart.findIndex(c => 
+          c.product_id === item.product_id && 
+          c.price_per_unit === item.price_per_unit && 
+          c.price_per_case === item.price_per_case
+        );
+
+        if (existingIndex >= 0) {
+          // Update existing cart item
+          setCart(prev => prev.map((c, i) => 
+            i === existingIndex 
+              ? { ...c, qtyUnits: c.qtyUnits + quantityToAdd }
+              : c
+          ));
+        } else {
+          // Add new cart item
+          setCart(prev => [...prev, cartItem]);
+        }
+        
+        addedCount++;
+      }
+    });
+
+    // Show success message
+    alert(`Bulk fill completed! Added ${bulkFillQuantity} units each to ${addedCount} products from "${bulkFillBrand}" in "${bulkFillCategory}".`);
+    
+    // Reset bulk fill selections
+    setBulkFillQuantity(1);
+    setBulkFillBrand('');
+    setBulkFillCategory('');
   }
 
   const totals = useMemo(() => {
@@ -619,6 +702,79 @@ export default function Page() {
         </div>
       </header>
 
+      {/* Bulk Fill Section */}
+      <div className="max-w-7xl mx-auto px-4 pt-4">
+        <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl border border-green-200 dark:border-green-700 p-4 mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-green-800 dark:text-green-300 flex items-center gap-2">
+              🚀 Bulk Fill Orders
+            </h3>
+            <span className="text-xs text-green-600 dark:text-green-400">Add same quantity to multiple products at once</span>
+          </div>
+          
+          <div className="flex flex-wrap items-center gap-4">
+            {/* Quantity Selector */}
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-green-700 dark:text-green-300 min-w-[30px]">Qty:</label>
+              <select
+                value={bulkFillQuantity}
+                onChange={(e) => setBulkFillQuantity(Number(e.target.value))}
+                className="rounded-lg border border-green-300 dark:border-green-600 bg-white dark:bg-neutral-900 px-3 py-2 text-sm min-w-[70px] focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
+              >
+                <option value={1}>1</option>
+                <option value={2}>2</option>
+                <option value={3}>3</option>
+                <option value={4}>4</option>
+                <option value={5}>5</option>
+              </select>
+            </div>
+
+            {/* Brand Selector */}
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-green-700 dark:text-green-300 min-w-[40px]">Brand:</label>
+              <select
+                value={bulkFillBrand}
+                onChange={(e) => setBulkFillBrand(e.target.value)}
+                className="rounded-lg border border-green-300 dark:border-green-600 bg-white dark:bg-neutral-900 px-3 py-2 text-sm min-w-[140px] focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
+              >
+                <option value="">Select Brand</option>
+                {uniqueBrands.map(brand => (
+                  <option key={brand} value={brand}>{brand}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Category Selector */}
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-green-700 dark:text-green-300 min-w-[60px]">Category:</label>
+              <select
+                value={bulkFillCategory}
+                onChange={(e) => setBulkFillCategory(e.target.value)}
+                className="rounded-lg border border-green-300 dark:border-green-600 bg-white dark:bg-neutral-900 px-3 py-2 text-sm min-w-[140px] focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
+              >
+                <option value="">Select Category</option>
+                {uniqueCategories.map(category => (
+                  <option key={category} value={category}>{category}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Bulk Fill Button */}
+            <button
+              onClick={handleBulkFill}
+              disabled={!bulkFillBrand || !bulkFillCategory}
+              className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ml-auto ${
+                bulkFillBrand && bulkFillCategory
+                  ? 'bg-green-600 hover:bg-green-700 text-white shadow-md hover:shadow-lg transform hover:scale-105'
+                  : 'bg-neutral-300 dark:bg-neutral-600 text-neutral-500 dark:text-neutral-400 cursor-not-allowed'
+              }`}
+            >
+              {bulkFillBrand && bulkFillCategory ? '+ Add to Cart' : 'Select Brand & Category'}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <main className="max-w-7xl mx-auto p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {isLoading && <div className="col-span-full text-neutral-500">Loading…</div>}
         {visibleItems.length === 0 && !isLoading && (
@@ -650,7 +806,9 @@ export default function Page() {
                       className="w-full h-full object-cover"
                       onError={(e) => {
                         const target = e.target as HTMLImageElement;
-                        if (target.src !== DEFAULT_PRODUCT_IMAGE) {
+                        if (target.src.includes('default-product.JPG')) {
+                          target.src = PLACEHOLDER_IMAGE;
+                        } else {
                           target.src = DEFAULT_PRODUCT_IMAGE;
                         }
                       }}
@@ -906,6 +1064,9 @@ export default function Page() {
             </div>
           )}
         </div>
+        
+        {/* SMS Menu Assistant Info */}
+        <SmsInfo />
       </aside>
 
       {/* Floating Go to Cart Button */}
