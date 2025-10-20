@@ -27,28 +27,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create context about available products - ensure diversity across categories
-    const availableProducts = currentMenu.filter((item: any) => item.units > 0 || item.cases_available > 0);
-    
-    // Group by category to ensure diversity
-    const categories = ['flower', 'edibles', 'concentrates', 'vapes', 'pre-rolls'];
-    let menuContext: any[] = [];
-    
-    // Add products from each category
-    categories.forEach(cat => {
-      const categoryItems = availableProducts
-        .filter((item: any) => item.category?.toLowerCase().includes(cat))
-        .slice(0, 8); // 8 per category
-      menuContext.push(...categoryItems);
-    });
-    
-    // Fill remaining slots with other products
-    const remaining = availableProducts
-      .filter((item: any) => !menuContext.some((existing: any) => existing.id === item.id))
-      .slice(0, Math.max(0, 50 - menuContext.length));
-    
-    menuContext.push(...remaining);
-    menuContext = menuContext.slice(0, 50) // Final limit
+    // Create context about ALL available products - no artificial limits
+    const menuContext = currentMenu
+      .filter((item: any) => item.units > 0 || item.cases_available > 0)
       .map((item: any) => ({
         name: item.name,
         brand: item.brand,
@@ -62,9 +43,14 @@ export async function POST(request: NextRequest) {
         unit_type: item.unit_type
       }));
 
+    // Debug: Log unique brands being passed to AI
+    const uniqueBrands = [...new Set(menuContext.map((item: any) => item.brand))].filter(Boolean);
+    console.log(`🏷️ Brands being sent to AI: ${uniqueBrands.length} brands:`, uniqueBrands.slice(0, 10));
+    console.log(`📦 Total products sent to AI: ${menuContext.length}`);
+
     const systemPrompt = `You are a knowledgeable cannabis budtender assistant for a B2B dispensary menu. Help customers find products, answer questions about inventory, effects, and pricing.
 
-Current Available Products (first 20 items):
+Complete Current Inventory (ALL available products with stock):
 ${JSON.stringify(menuContext, null, 2)}
 
 Guidelines:
