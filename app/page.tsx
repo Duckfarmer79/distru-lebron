@@ -4,6 +4,7 @@ import React, { useMemo, useState } from 'react';
 import useSWR from 'swr';
 import { useTotals, addUnits } from '../lib/cart';
 import SmsInfo from '../components/SmsInfo';
+import ChatWidget from '../components/ChatWidget';
 
 // Default image for products missing images
 const DEFAULT_PRODUCT_IMAGE = '/default-product.JPG';
@@ -1182,6 +1183,9 @@ export default function Page() {
           Cart ({cart.length})
         </button>
       </div>
+
+      {/* AI Chat Widget */}
+      <ChatWidget menuData={data} />
     </div>
   );
 }

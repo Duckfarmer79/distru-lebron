@@ -8,6 +8,9 @@ A Next.js application that creates a cannabis product ordering interface by inte
 - **Order Management**: Complete B2B ordering system with customer selection
 - **User Assignment**: Owner and sales rep assignment for order tracking
 - **Flexible Ordering**: Unit and case-based ordering with price overrides
+- **Bulk Fill**: Add same quantity to multiple products by brand/category
+- **Editable Cart**: Modify quantities and prices directly in cart
+- **AI Chat Widget**: Intelligent assistant for product questions and recommendations
 - **SMS Menu Assistant**: Customers can text questions about products and get instant answers
 - **Smart Images**: Automatic fallback images for products without photos
 - **Responsive Design**: Works perfectly on desktop and mobile
@@ -109,17 +112,26 @@ When deploying, you'll need to set these environment variables:
 | `DISTRU_BASE_URL` | Distru API base URL | ✅ | `https://api.distru.com` |
 | `DISTRU_API_KEY` | Your Distru API token | ✅ | `your_api_key_here` |
 | `DISTRU_LOCATION_ID` | Your location ID for inventory | ✅ | `your_location_id_here` |
+| `OPENAI_API_KEY` | OpenAI API key (for chat widget) | ❌ | `sk-xxxxxxxxxxxxxxxx` |
 | `TWILIO_ACCOUNT_SID` | Twilio Account SID (for SMS) | ❌ | `ACxxxxxxxxxxxxxxxx` |
 | `TWILIO_AUTH_TOKEN` | Twilio Auth Token (for SMS) | ❌ | `your_auth_token` |
 | `TWILIO_PHONE_NUMBER` | Your Twilio phone number | ❌ | `+15551234567` |
 
-### Getting Your Distru Credentials
+### Getting Your API Credentials
 
+#### Distru API Setup
 1. **Login to Distru**: Go to your Distru dashboard
 2. **API Settings**: Navigate to Settings → API or Developer settings
 3. **Generate Token**: Create a new API token if you don't have one
 4. **Location ID**: Find your location ID in the locations section
 5. **Copy Values**: Use these in your deployment environment variables
+
+#### OpenAI API Setup (for Chat Widget)
+1. **Create Account**: Go to [OpenAI Platform](https://platform.openai.com)
+2. **API Keys**: Navigate to API Keys section
+3. **Create Key**: Generate a new API key
+4. **Add to Environment**: Set `OPENAI_API_KEY` in your deployment
+5. **Note**: Chat widget will show "try again later" message if key is missing
 
 ## 📱 SMS Menu Assistant (Optional)
 
