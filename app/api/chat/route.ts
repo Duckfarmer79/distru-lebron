@@ -27,10 +27,28 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create context about available products
-    const menuContext = currentMenu
-      .filter((item: any) => item.units > 0 || item.cases_available > 0)
-      .slice(0, 20) // Limit to prevent token overflow
+    // Create context about available products - ensure diversity across categories
+    const availableProducts = currentMenu.filter((item: any) => item.units > 0 || item.cases_available > 0);
+    
+    // Group by category to ensure diversity
+    const categories = ['flower', 'edibles', 'concentrates', 'vapes', 'pre-rolls'];
+    let menuContext: any[] = [];
+    
+    // Add products from each category
+    categories.forEach(cat => {
+      const categoryItems = availableProducts
+        .filter((item: any) => item.category?.toLowerCase().includes(cat))
+        .slice(0, 8); // 8 per category
+      menuContext.push(...categoryItems);
+    });
+    
+    // Fill remaining slots with other products
+    const remaining = availableProducts
+      .filter((item: any) => !menuContext.some((existing: any) => existing.id === item.id))
+      .slice(0, Math.max(0, 50 - menuContext.length));
+    
+    menuContext.push(...remaining);
+    menuContext = menuContext.slice(0, 50) // Final limit
       .map((item: any) => ({
         name: item.name,
         brand: item.brand,
