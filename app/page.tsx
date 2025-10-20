@@ -1185,7 +1185,7 @@ export default function Page() {
       </div>
 
       {/* AI Chat Widget */}
-      <ChatWidget menuData={data} />
+      <ChatWidget menuData={data} onAddToCart={addToCart} />
     </div>
   );
 }

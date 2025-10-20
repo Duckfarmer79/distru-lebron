@@ -11,14 +11,15 @@ type Message = {
 
 type ChatWidgetProps = {
   menuData?: any[];
+  onAddToCart?: (cartItem: any) => void;
 };
 
-export default function ChatWidget({ menuData }: ChatWidgetProps) {
+export default function ChatWidget({ menuData, onAddToCart }: ChatWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      text: "👋 Hi! I'm your cannabis menu assistant. I can help you find products, check inventory, or answer questions about our selection. What are you looking for today?",
+      text: "👋 Name's Carl. I run this cannabis menu and know every product we've got. I can help you find what you need, check inventory, or answer questions. What are you looking for, bigdawg?",
       isUser: false,
       timestamp: new Date()
     }
@@ -63,7 +64,15 @@ export default function ChatWidget({ menuData }: ChatWidgetProps) {
 
       const data = await response.json();
 
-      if (response.ok) {
+      console.log('🤖 Chat response:', data);
+
+      if (data.cartAction && onAddToCart) {
+        console.log('🛒 Processing cart action:', data.cartAction);
+        // Handle cart action
+        onAddToCart(data.cartAction.product);
+      }
+
+      if (data.response) {
         const aiMessage: Message = {
           id: (Date.now() + 1).toString(),
           text: data.response,
