@@ -474,11 +474,11 @@ export default function Page() {
     const matchingProducts = data?.filter((item: MenuItem) => 
       item.brand === bulkFillBrand && 
       item.category === bulkFillCategory &&
-      item.units > 0 // Only include products with available stock
+      item.cases_available > 0 // Only include products with available case stock
     ) || [];
 
     if (matchingProducts.length === 0) {
-      alert(`No products found for brand "${bulkFillBrand}" in category "${bulkFillCategory}" with available stock.`);
+      alert(`No products found for brand "${bulkFillBrand}" in category "${bulkFillCategory}" with available case stock.`);
       return;
     }
 
@@ -486,8 +486,8 @@ export default function Page() {
     let addedCount = 0;
     matchingProducts.forEach((item: MenuItem) => {
       // Check if we can add the requested quantity (don't exceed available stock)
-      const availableUnits = item.units;
-      const quantityToAdd = Math.min(bulkFillQuantity, availableUnits);
+      const availableCases = item.cases_available;
+      const quantityToAdd = Math.min(bulkFillQuantity, availableCases);
 
       if (quantityToAdd > 0) {
         // Create a cart item similar to how the individual product cards do it
@@ -500,10 +500,10 @@ export default function Page() {
           price_per_case: item.price_per_case,
           image_url: item.image_url,
           
-          // Set the bulk quantity
-          qtyUnits: quantityToAdd,
-          qtyCases: 0,
-          mode: 'unit' as 'unit' | 'case'
+          // Set the bulk quantity for CASES
+          qtyUnits: 0,
+          qtyCases: quantityToAdd,
+          mode: 'case' as 'unit' | 'case'
         };
 
         // Check if this product is already in cart
@@ -517,7 +517,7 @@ export default function Page() {
           // Update existing cart item
           setCart(prev => prev.map((c, i) => 
             i === existingIndex 
-              ? { ...c, qtyUnits: c.qtyUnits + quantityToAdd }
+              ? { ...c, qtyCases: c.qtyCases + quantityToAdd }
               : c
           ));
         } else {
@@ -530,7 +530,7 @@ export default function Page() {
     });
 
     // Show success message
-    alert(`Bulk fill completed! Added ${bulkFillQuantity} units each to ${addedCount} products from "${bulkFillBrand}" in "${bulkFillCategory}".`);
+    alert(`Bulk fill completed! Added ${bulkFillQuantity} cases each to ${addedCount} products from "${bulkFillBrand}" in "${bulkFillCategory}".`);
     
     // Reset bulk fill selections
     setBulkFillQuantity(1);
@@ -709,7 +709,7 @@ export default function Page() {
             <h3 className="text-sm font-semibold text-green-800 dark:text-green-300 flex items-center gap-2">
               🚀 Bulk Fill Orders
             </h3>
-            <span className="text-xs text-green-600 dark:text-green-400">Add same quantity to multiple products at once</span>
+            <span className="text-xs text-green-600 dark:text-green-400">Add same number of cases to multiple products at once</span>
           </div>
           
           <div className="flex flex-wrap items-center gap-4">
@@ -798,40 +798,116 @@ export default function Page() {
           ) : (
             <div className="space-y-3">
               {cart.map(c => (
-                <div key={c.product_id} className="flex items-center gap-3 border-b border-neutral-200 dark:border-neutral-800 pb-3">
-                  <div className="w-14 h-14 rounded-lg overflow-hidden bg-neutral-100 dark:bg-neutral-800 flex-shrink-0">
-                    <img 
-                      src={getProductImage(c.image_url)} 
-                      alt={c.name} 
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        if (target.src.includes('default-product.JPG')) {
-                          target.src = PLACEHOLDER_IMAGE;
-                        } else {
-                          target.src = DEFAULT_PRODUCT_IMAGE;
-                        }
-                      }}
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <div className="text-sm font-medium">{c.name}</div>
-                    <div className="text-xs text-neutral-500">{c.brand || '—'}</div>
-                    <div className="text-xs mt-1">
-                      {c.qtyUnits > 0 ? `${c.qtyUnits} units @ ${currency(c.price_per_unit)} ` : null}
-                      {c.qtyUnits > 0 && c.qtyCases > 0 ? '• ' : null}
-                      {c.qtyCases > 0 ? `${c.qtyCases} cases @ ${currency(c.price_per_case)}` : null}
+                <div key={c.product_id} className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-3 bg-neutral-50 dark:bg-neutral-800/50">
+                  <div className="flex items-start gap-3">
+                    <div className="w-14 h-14 rounded-lg overflow-hidden bg-neutral-100 dark:bg-neutral-800 flex-shrink-0">
+                      <img 
+                        src={getProductImage(c.image_url)} 
+                        alt={c.name} 
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          if (target.src.includes('default-product.JPG')) {
+                            target.src = PLACEHOLDER_IMAGE;
+                          } else {
+                            target.src = DEFAULT_PRODUCT_IMAGE;
+                          }
+                        }}
+                      />
+                    </div>
+                    
+                    <div className="flex-1 space-y-3">
+                      <div>
+                        <div className="text-sm font-medium">{c.name}</div>
+                        <div className="text-xs text-neutral-500">{c.brand || '—'}</div>
+                      </div>
+                      
+                      {/* Editable Quantities and Prices */}
+                      <div className="space-y-2">
+                        {/* Units Row */}
+                        {c.qtyUnits > 0 && (
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="min-w-[40px]">Units:</span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={c.qtyUnits}
+                              onChange={(e) => {
+                                const newQty = Math.max(0, parseInt(e.target.value) || 0);
+                                setCart(prev => prev.map(item => 
+                                  item.product_id === c.product_id ? { ...item, qtyUnits: newQty } : item
+                                ));
+                              }}
+                              className="w-16 px-2 py-1 rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-xs"
+                            />
+                            <span>@</span>
+                            <span className="text-neutral-500">$</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={c.price_per_unit.toFixed(2)}
+                              onChange={(e) => {
+                                const newPrice = Math.max(0, parseFloat(e.target.value) || 0);
+                                setCart(prev => prev.map(item => 
+                                  item.product_id === c.product_id ? { ...item, price_per_unit: newPrice } : item
+                                ));
+                              }}
+                              className="w-20 px-2 py-1 rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-xs"
+                            />
+                            <span className="text-neutral-500">= {currency(c.qtyUnits * c.price_per_unit)}</span>
+                          </div>
+                        )}
+                        
+                        {/* Cases Row */}
+                        {c.qtyCases > 0 && (
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="min-w-[40px]">Cases:</span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={c.qtyCases}
+                              onChange={(e) => {
+                                const newQty = Math.max(0, parseInt(e.target.value) || 0);
+                                setCart(prev => prev.map(item => 
+                                  item.product_id === c.product_id ? { ...item, qtyCases: newQty } : item
+                                ));
+                              }}
+                              className="w-16 px-2 py-1 rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-xs"
+                            />
+                            <span>@</span>
+                            <span className="text-neutral-500">$</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={c.price_per_case.toFixed(2)}
+                              onChange={(e) => {
+                                const newPrice = Math.max(0, parseFloat(e.target.value) || 0);
+                                setCart(prev => prev.map(item => 
+                                  item.product_id === c.product_id ? { ...item, price_per_case: newPrice } : item
+                                ));
+                              }}
+                              className="w-20 px-2 py-1 rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-xs"
+                            />
+                            <span className="text-neutral-500">= {currency(c.qtyCases * c.price_per_case)}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="text-right">
+                      <div className="text-sm font-semibold mb-2">
+                        {currency(c.qtyUnits * c.price_per_unit + c.qtyCases * c.price_per_case)}
+                      </div>
+                      <button
+                        onClick={() => removeFromCart(c.product_id)}
+                        className="text-xs px-2 py-1 rounded-md border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                      >
+                        Remove
+                      </button>
                     </div>
                   </div>
-                  <div className="text-sm font-semibold">
-                    {currency(c.qtyUnits * c.price_per_unit + c.qtyCases * c.price_per_case)}
-                  </div>
-                  <button
-                    onClick={() => removeFromCart(c.product_id)}
-                    className="text-xs px-2 py-1 rounded-md border border-neutral-300 dark:border-neutral-700"
-                  >
-                    Remove
-                  </button>
                 </div>
               ))}
               
