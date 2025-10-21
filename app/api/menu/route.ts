@@ -35,15 +35,15 @@ export async function GET(req: NextRequest) {
 
     // Fetch essential data with timeout
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 25000); // 25 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 second timeout to allow for orders fetch
     
     let pkgs: Pkg[];
     let prods: Prod[];
-    const commitments: OrderCommitment[] = []; // Skip order commitments for now to prevent timeout
+    let commitments: OrderCommitment[] = [];
     
     try {
-      // Fetch packages and products only (skip orders for now to reduce timeout)
-      const [pkgRes, prodRes] = await Promise.all([
+      // Fetch packages, products, and order commitments
+      const [pkgRes, prodRes, ordersRes] = await Promise.all([
         fetch(`${origin}/api/distru/packages`, { 
           cache: 'no-store', 
           signal: controller.signal,
@@ -54,6 +54,11 @@ export async function GET(req: NextRequest) {
           signal: controller.signal,
           headers: { 'Accept': 'application/json' }
         }),
+        fetch(`${origin}/api/distru/orders`, { 
+          cache: 'no-store', 
+          signal: controller.signal,
+          headers: { 'Accept': 'application/json' }
+        }).catch(() => null), // Don't fail menu if orders fail
       ]);
 
       clearTimeout(timeoutId);
@@ -69,6 +74,19 @@ export async function GET(req: NextRequest) {
 
       pkgs = await pkgRes.json();
       prods = await prodRes.json();
+      
+      // Handle orders response - don't fail if orders API is down
+      if (ordersRes && ordersRes.ok) {
+        try {
+          const ordersData = await ordersRes.json();
+          commitments = Array.isArray(ordersData) ? ordersData : [];
+          console.log(`📋 Successfully fetched ${commitments.length} order commitments`);
+        } catch (error) {
+          console.warn('⚠️ Failed to parse order commitments, proceeding without them');
+        }
+      } else {
+        console.warn('⚠️ Orders API unavailable, proceeding without commitments');
+      }
       
     } catch (error) {
       clearTimeout(timeoutId);
