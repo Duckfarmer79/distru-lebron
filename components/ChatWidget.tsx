@@ -12,14 +12,15 @@ type Message = {
 type ChatWidgetProps = {
   menuData?: any[];
   onAddToCart?: (cartItem: any) => void;
+  currentLocation?: string;
 };
 
-export default function ChatWidget({ menuData, onAddToCart }: ChatWidgetProps) {
+export default function ChatWidget({ menuData, onAddToCart, currentLocation }: ChatWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      text: "👋 Name's Carl. I run this cannabis menu and know every product we've got. I can help you find what you need, check inventory, or answer questions. What are you looking for, bigdawg?",
+      text: `👋 Name's Carl. I run this cannabis menu and know every product we've got${currentLocation ? ` at ${currentLocation}` : ''}. I can help you find what you need, check inventory, or answer questions. What are you looking for, bigdawg?`,
       isUser: false,
       timestamp: new Date()
     }
@@ -58,7 +59,8 @@ export default function ChatWidget({ menuData, onAddToCart }: ChatWidgetProps) {
         },
         body: JSON.stringify({
           message: inputText,
-          menuData: menuData
+          menuData: menuData,
+          currentLocation: currentLocation
         }),
       });
 

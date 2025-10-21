@@ -31,7 +31,18 @@ type OrderCommitment = {
 
 export async function GET(req: NextRequest) {
   try {
+    const { searchParams } = new URL(req.url);
+    const locationParam = searchParams.get('location');
     const origin = new URL(req.url).origin;
+
+    // Use location parameter or fall back to env variable
+    const locationId = locationParam || process.env.DISTRU_LOCATION_ID;
+    
+    if (!locationId) {
+      return NextResponse.json({ error: 'No location ID provided' }, { status: 400 });
+    }
+
+    console.log(`🏢 Fetching menu for location: ${locationId}`);
 
     // Fetch essential data with timeout
     const controller = new AbortController();
@@ -42,9 +53,9 @@ export async function GET(req: NextRequest) {
     let commitments: OrderCommitment[] = [];
     
     try {
-      // Fetch packages, products, and order commitments
+      // Fetch packages, products, and order commitments with location parameter
       const [pkgRes, prodRes, ordersRes] = await Promise.all([
-        fetch(`${origin}/api/distru/packages`, { 
+        fetch(`${origin}/api/distru/packages?location=${locationId}`, { 
           cache: 'no-store', 
           signal: controller.signal,
           headers: { 'Accept': 'application/json' }
@@ -54,7 +65,7 @@ export async function GET(req: NextRequest) {
           signal: controller.signal,
           headers: { 'Accept': 'application/json' }
         }),
-        fetch(`${origin}/api/distru/orders`, { 
+        fetch(`${origin}/api/distru/orders?location=${locationId}`, { 
           cache: 'no-store', 
           signal: controller.signal,
           headers: { 'Accept': 'application/json' }
@@ -140,7 +151,13 @@ export async function GET(req: NextRequest) {
         
         const caseSize = pr.units_per_case > 0 ? pr.units_per_case : 1;
         const pricePerUnit = Number.isFinite(pr.unit_price) ? pr.unit_price : 0;
-        const pricePerCase = pricePerUnit * caseSize;
+        let pricePerCase = pricePerUnit * caseSize;
+        
+        // Special rounding for location 00000000-0000-0000-0000-00000005673a
+        // Round case prices to nearest $100 (e.g., 1000.88 -> 1000, 1199.99 -> 1200)
+        if (locationId === '00000000-0000-0000-0000-00000005673a') {
+          pricePerCase = Math.round(pricePerCase / 100) * 100;
+        }
         
         // Calculate average THC percentage
         const thcData = thcDataByProduct.get(pr.id);

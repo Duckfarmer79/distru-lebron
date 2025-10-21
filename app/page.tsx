@@ -287,11 +287,38 @@ function ItemCard({
 }
 
 export default function Page() {
-  const { data, error, isLoading } = useSWR<MenuItem[]>('/api/menu', fetcher, {
-    refreshInterval: 30000,
-    dedupingInterval: 5000,
-    revalidateOnFocus: true,
-  });
+  // Location state - default to the first location
+  const [currentLocation, setCurrentLocation] = useState('00000000-0000-0000-0000-000000056821');
+
+  // Location definitions
+  const locations = [
+    { id: '00000000-0000-0000-0000-000000056821', name: 'Warehouse A' },
+    { id: '00000000-0000-0000-0000-00000005673a', name: 'Warehouse B' },
+  ];
+
+  const { data, error, isLoading } = useSWR<MenuItem[]>(
+    `/api/menu?location=${currentLocation}`, 
+    fetcher, 
+    {
+      refreshInterval: 30000,
+      dedupingInterval: 5000,
+      revalidateOnFocus: true,
+    }
+  );
+
+  // Clear cart when location changes
+  const handleLocationChange = (newLocationId: string) => {
+    if (cart.length > 0) {
+      const confirmed = window.confirm(
+        'Switching locations will clear your cart. Continue?'
+      );
+      if (!confirmed) return;
+      
+      // Clear cart
+      setCart([]);
+    }
+    setCurrentLocation(newLocationId);
+  };
 
   const { data: customers, error: customersError, isLoading: customersLoading } = useSWR<Customer[]>('/api/distru/companies', fetcher, {
     revalidateOnMount: true,
@@ -628,6 +655,22 @@ export default function Page() {
         <div className="max-w-7xl mx-auto p-4 flex items-center justify-between">
           <div className="flex items-center gap-6">
             <div className="text-lg font-semibold">Distru Menu - {testDisplay}</div>
+            
+            {/* Location Switcher */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-neutral-600 dark:text-neutral-400">Location:</span>
+              <select
+                value={currentLocation}
+                onChange={(e) => handleLocationChange(e.target.value)}
+                className="rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-1 text-sm font-medium"
+              >
+                {locations.map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {location.name}
+                  </option>
+                ))}
+              </select>
+            </div>
             
             {/* Filter and Sort Controls */}
             <div className="flex items-center gap-3">
@@ -1185,7 +1228,11 @@ export default function Page() {
       </div>
 
       {/* AI Chat Widget */}
-      <ChatWidget menuData={data} onAddToCart={addToCart} />
+      <ChatWidget 
+        menuData={data} 
+        onAddToCart={addToCart}
+        currentLocation={locations.find(loc => loc.id === currentLocation)?.name || 'Unknown'}
+      />
     </div>
   );
 }

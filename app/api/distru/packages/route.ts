@@ -38,14 +38,20 @@ async function fetchPackagesAllPages(base: string, token: string, locationId: st
   return all;
 }
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
+    const { searchParams } = new URL(req.url);
+    const locationParam = searchParams.get('location');
+    
     const base = process.env.DISTRU_BASE_URL;
     const token = process.env.DISTRU_API_KEY;
-    const locationId = process.env.DISTRU_LOCATION_ID;
+    const locationId = locationParam || process.env.DISTRU_LOCATION_ID;
+    
     if (!base || !token || !locationId) {
-      return NextResponse.json({ error: 'Missing env' }, { status: 500 });
+      return NextResponse.json({ error: 'Missing env or location parameter' }, { status: 500 });
     }
+
+    console.log(`📦 Fetching packages for location: ${locationId}`);
 
     const rows = await fetchPackagesAllPages(base, token, locationId);
 
