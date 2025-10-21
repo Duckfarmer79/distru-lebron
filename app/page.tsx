@@ -105,9 +105,9 @@ function ItemCard({
   onAdd: (ci: CartItem) => void;
   reservedUnits?: number;
 }) {
-  const [mode, setMode] = useState<'unit' | 'case'>('unit');
+  const [mode, setMode] = useState<'unit' | 'case'>('case');
   const [qtyUnits, setQtyUnits] = useState<number>(0);
-  const [qtyCases, setQtyCases] = useState<number>(0);
+  const [qtyCases, setQtyCases] = useState<number>(1);
   const [ppu, setPpu] = useState<number>(item.price_per_unit || 0);
   const [ppc, setPpc] = useState<number>(item.price_per_case || (item.price_per_unit * item.case_size));
 
@@ -140,7 +140,7 @@ function ItemCard({
       price_per_case: ppc,
     });
     setQtyUnits(0);
-    setQtyCases(0);
+    setQtyCases(1);
   }
 
   const maxUnits = item.units;
@@ -229,16 +229,16 @@ function ItemCard({
 
       <div className="mt-3 flex items-center gap-2">
         <button
-          onClick={() => setMode('unit')}
-          className={`flex-1 rounded-lg p-2 text-sm ${mode === 'unit' ? 'bg-black text-white dark:bg-white dark:text-black' : 'bg-neutral-100 dark:bg-neutral-800'}`}
-        >
-          By Unit
-        </button>
-        <button
           onClick={() => setMode('case')}
           className={`flex-1 rounded-lg p-2 text-sm ${mode === 'case' ? 'bg-black text-white dark:bg-white dark:text-black' : 'bg-neutral-100 dark:bg-neutral-800'}`}
         >
           By Case
+        </button>
+        <button
+          onClick={() => setMode('unit')}
+          className={`flex-1 rounded-lg p-2 text-sm ${mode === 'unit' ? 'bg-black text-white dark:bg-white dark:text-black' : 'bg-neutral-100 dark:bg-neutral-800'}`}
+        >
+          By Unit
         </button>
       </div>
 
@@ -915,73 +915,94 @@ export default function Page() {
                       
                       {/* Editable Quantities and Prices */}
                       <div className="space-y-2">
-                        {/* Units Row */}
-                        {c.qtyUnits > 0 && (
+                        {/* Units Row - Show if there are units OR always show price editing */}
+                        {(c.qtyUnits > 0 || c.qtyCases > 0) && (
                           <div className="flex items-center gap-2 text-xs">
                             <span className="min-w-[40px]">Units:</span>
-                            <input
-                              type="number"
-                              min="0"
-                              value={c.qtyUnits}
-                              onChange={(e) => {
-                                const newQty = Math.max(0, parseInt(e.target.value) || 0);
-                                setCart(prev => prev.map(item => 
-                                  item.product_id === c.product_id ? { ...item, qtyUnits: newQty } : item
-                                ));
-                              }}
-                              className="w-16 px-2 py-1 rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-xs"
-                            />
+                            {c.qtyUnits > 0 ? (
+                              <input
+                                type="number"
+                                min="0"
+                                value={c.qtyUnits}
+                                onChange={(e) => {
+                                  const newQty = Math.max(0, parseInt(e.target.value) || 0);
+                                  setCart(prev => prev.map(item => 
+                                    item.product_id === c.product_id ? { ...item, qtyUnits: newQty } : item
+                                  ));
+                                }}
+                                className="w-16 px-2 py-1 rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-xs"
+                              />
+                            ) : (
+                              <span className="w-16 px-2 py-1 text-center text-neutral-400 text-xs">0</span>
+                            )}
                             <span>@</span>
                             <span className="text-neutral-500">$</span>
                             <input
                               type="number"
                               min="0"
                               step="0.01"
-                              value={c.price_per_unit.toFixed(2)}
+                              value={c.price_per_unit}
                               onChange={(e) => {
                                 const newPrice = Math.max(0, parseFloat(e.target.value) || 0);
                                 setCart(prev => prev.map(item => 
-                                  item.product_id === c.product_id ? { ...item, price_per_unit: newPrice } : item
+                                  item.product_id === c.product_id ? { 
+                                    ...item, 
+                                    price_per_unit: newPrice,
+                                    price_per_case: newPrice * item.case_size // Auto-sync case price
+                                  } : item
                                 ));
                               }}
                               className="w-20 px-2 py-1 rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-xs"
                             />
-                            <span className="text-neutral-500">= {currency(c.qtyUnits * c.price_per_unit)}</span>
+                            {c.qtyUnits > 0 && (
+                              <span className="text-neutral-500">= {currency(c.qtyUnits * c.price_per_unit)}</span>
+                            )}
                           </div>
                         )}
                         
-                        {/* Cases Row */}
-                        {c.qtyCases > 0 && (
+                        {/* Cases Row - Show if there are cases OR always show price editing */}
+                        {(c.qtyCases > 0 || c.qtyUnits > 0) && (
                           <div className="flex items-center gap-2 text-xs">
                             <span className="min-w-[40px]">Cases:</span>
-                            <input
-                              type="number"
-                              min="0"
-                              value={c.qtyCases}
-                              onChange={(e) => {
-                                const newQty = Math.max(0, parseInt(e.target.value) || 0);
-                                setCart(prev => prev.map(item => 
-                                  item.product_id === c.product_id ? { ...item, qtyCases: newQty } : item
-                                ));
-                              }}
-                              className="w-16 px-2 py-1 rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-xs"
-                            />
+                            {c.qtyCases > 0 ? (
+                              <input
+                                type="number"
+                                min="0"
+                                value={c.qtyCases}
+                                onChange={(e) => {
+                                  const newQty = Math.max(0, parseInt(e.target.value) || 0);
+                                  setCart(prev => prev.map(item => 
+                                    item.product_id === c.product_id ? { ...item, qtyCases: newQty } : item
+                                  ));
+                                }}
+                                className="w-16 px-2 py-1 rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-xs"
+                              />
+                            ) : (
+                              <span className="w-16 px-2 py-1 text-center text-neutral-400 text-xs">0</span>
+                            )}
                             <span>@</span>
                             <span className="text-neutral-500">$</span>
                             <input
                               type="number"
                               min="0"
                               step="0.01"
-                              value={c.price_per_case.toFixed(2)}
+                              value={c.price_per_case}
                               onChange={(e) => {
                                 const newPrice = Math.max(0, parseFloat(e.target.value) || 0);
+                                const caseSize = c.case_size || 1;
                                 setCart(prev => prev.map(item => 
-                                  item.product_id === c.product_id ? { ...item, price_per_case: newPrice } : item
+                                  item.product_id === c.product_id ? { 
+                                    ...item, 
+                                    price_per_case: newPrice,
+                                    price_per_unit: caseSize ? newPrice / caseSize : 0 // Auto-sync unit price
+                                  } : item
                                 ));
                               }}
                               className="w-20 px-2 py-1 rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-xs"
                             />
-                            <span className="text-neutral-500">= {currency(c.qtyCases * c.price_per_case)}</span>
+                            {c.qtyCases > 0 && (
+                              <span className="text-neutral-500">= {currency(c.qtyCases * c.price_per_case)}</span>
+                            )}
                           </div>
                         )}
                       </div>
