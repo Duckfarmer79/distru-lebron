@@ -290,6 +290,9 @@ export default function Page() {
   // Location state - default to the first location
   const [currentLocation, setCurrentLocation] = useState('00000000-0000-0000-0000-000000056821');
 
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'menu' | 'sales'>('menu');
+
   // Location definitions
   const locations = [
     { id: '00000000-0000-0000-0000-000000056821', name: 'Warehouse A' },
@@ -303,6 +306,16 @@ export default function Page() {
       refreshInterval: 30000,
       dedupingInterval: 5000,
       revalidateOnFocus: true,
+    }
+  );
+
+  // Order pulling data for PROCESSING orders
+  const { data: salesData, error: salesError, isLoading: salesLoading } = useSWR(
+    activeTab === 'sales' ? `/api/sales?location=${currentLocation}` : null,
+    fetcher,
+    {
+      refreshInterval: 60000, // Refresh less frequently for order pulling data
+      dedupingInterval: 30000,
     }
   );
 
@@ -652,29 +665,59 @@ export default function Page() {
       </div>
 
       <header className="sticky top-0 z-10 bg-white/80 dark:bg-neutral-900/80 backdrop-blur border-b border-neutral-200 dark:border-neutral-800">
-        <div className="max-w-7xl mx-auto p-4 flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <div className="text-lg font-semibold">Distru Menu - {testDisplay}</div>
-            
-            {/* Location Switcher */}
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-neutral-600 dark:text-neutral-400">Location:</span>
-              <select
-                value={currentLocation}
-                onChange={(e) => handleLocationChange(e.target.value)}
-                className="rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-1 text-sm font-medium"
+        <div className="max-w-7xl mx-auto p-4">
+          {/* Top row with title and location */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-6">
+              <div className="text-lg font-semibold">Distru Menu - {testDisplay}</div>
+              
+              {/* Location Switcher */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-neutral-600 dark:text-neutral-400">Location:</span>
+                <select
+                  value={currentLocation}
+                  onChange={(e) => handleLocationChange(e.target.value)}
+                  className="rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-1 text-sm font-medium"
+                >
+                  {locations.map((location) => (
+                    <option key={location.id} value={location.id}>
+                      {location.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Tab Navigation */}
+          <div className="flex items-center justify-between">
+            <div className="flex">
+              <button
+                onClick={() => setActiveTab('menu')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  activeTab === 'menu'
+                    ? 'bg-blue-500 text-white'
+                    : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'
+                }`}
               >
-                {locations.map((location) => (
-                  <option key={location.id} value={location.id}>
-                    {location.name}
-                  </option>
-                ))}
-              </select>
+                Product Menu
+              </button>
+              <button
+                onClick={() => setActiveTab('sales')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ml-2 ${
+                  activeTab === 'sales'
+                    ? 'bg-blue-500 text-white'
+                    : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'
+                }`}
+              >
+                Order Pulling
+              </button>
             </div>
             
-            {/* Filter and Sort Controls */}
-            <div className="flex items-center gap-3">
-              {/* Search Input */}
+            {/* Filter and Sort Controls - only show for menu tab */}
+            {activeTab === 'menu' && (
+              <div className="flex items-center gap-3">
+                {/* Search Input */}
               <input
                 type="text"
                 placeholder="Search products, brands, categories..."
@@ -726,7 +769,8 @@ export default function Page() {
                   {sortOrder === 'asc' ? '↑' : '↓'}
                 </button>
               </div>
-            </div>
+              </div>
+            )}
           </div>
           
           <div className="flex items-center gap-6">
@@ -746,8 +790,11 @@ export default function Page() {
         </div>
       </header>
 
-      {/* Bulk Fill Section */}
-      <div className="max-w-7xl mx-auto px-4 pt-4">
+      {/* Menu Tab Content */}
+      {activeTab === 'menu' && (
+        <>
+          {/* Bulk Fill Section */}
+          <div className="max-w-7xl mx-auto px-4 pt-4">
         <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl border border-green-200 dark:border-green-700 p-4 mb-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-green-800 dark:text-green-300 flex items-center gap-2">
@@ -1226,6 +1273,87 @@ export default function Page() {
           Cart ({cart.length})
         </button>
       </div>
+        </>
+      )}
+
+      {/* Order Pulling Tab Content */}
+      {activeTab === 'sales' && (
+        <div className="max-w-7xl mx-auto px-4 pt-4">
+          {salesLoading && (
+            <div className="text-center py-8 text-neutral-500">Loading order pulling data...</div>
+          )}
+          
+          {salesError && (
+            <div className="text-center py-8 text-red-500">Failed to load order pulling data</div>
+          )}
+          
+          {salesData && (
+            <div className="space-y-6">
+              <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100">
+                Order Pulling Dashboard - {locations.find(loc => loc.id === currentLocation)?.name}
+              </h2>
+              
+              {salesData.length === 0 ? (
+                <div className="text-center py-8 text-neutral-500">
+                  No processing orders for this location
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6">
+                  {salesData.map((brand: any) => (
+                    <div key={brand.brand} className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-700 p-6">
+                      {/* Brand Header */}
+                      <div className="mb-4 pb-4 border-b border-neutral-200 dark:border-neutral-700">
+                        <h3 className="text-lg font-bold text-neutral-900 dark:text-neutral-100">
+                          {brand.brand}
+                        </h3>
+                        <div className="grid grid-cols-2 gap-4 mt-2 text-sm">
+                          <div>
+                            <span className="text-neutral-500">Total Cases:</span>
+                            <div className="font-semibold text-blue-600 dark:text-blue-400">
+                              {brand.brandTotalCases.toFixed(1)}
+                            </div>
+                          </div>
+                          <div>
+                            <span className="text-neutral-500">Total Value:</span>
+                            <div className="font-semibold text-green-600 dark:text-green-400">
+                              ${brand.brandTotalDollars.toFixed(2)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Products List */}
+                      <div className="space-y-3 max-h-96 overflow-y-auto">
+                        {brand.products.map((product: any, index: number) => (
+                          <div key={index} className="bg-neutral-50 dark:bg-neutral-800 rounded-lg p-3">
+                            <div className="font-medium text-sm text-neutral-900 dark:text-neutral-100 mb-2">
+                              {product.name}
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 text-xs text-neutral-600 dark:text-neutral-400">
+                              <div>
+                                <span className="block">Cases to Pull:</span>
+                                <span className="font-semibold text-blue-600 dark:text-blue-400">
+                                  {product.totalCasesToPull}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="block">Order Value:</span>
+                                <span className="font-semibold text-green-600 dark:text-green-400">
+                                  ${product.totalDollarsValue.toFixed(2)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* AI Chat Widget */}
       <ChatWidget 
